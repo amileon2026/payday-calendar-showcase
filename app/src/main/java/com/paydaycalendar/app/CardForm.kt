@@ -357,7 +357,8 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
     }
 }
 
-/// 数字行：中间的数字可以直接点开输入，也可以按右侧加减微调；输入超出范围会自动夹回。
+/// 数字行：中间的数字可以直接点开输入，也可以按右侧加减微调；两种方式都即时生效，
+/// 下方预览实时刷新；输入超出范围会自动夹回。
 @Composable
 fun NumberStepperRow(
     label: String,
@@ -371,12 +372,6 @@ fun NumberStepperRow(
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(value) { if (!focused) text = value.toString() }
 
-    fun commit() {
-        val n = text.trim().toIntOrNull()
-        if (n != null) onChange(n.coerceIn(range.first, range.last))
-        text = (n?.coerceIn(range.first, range.last) ?: value).toString()
-    }
-
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 16.sp)
         Spacer(Modifier.weight(1f))
@@ -386,7 +381,16 @@ fun NumberStepperRow(
         }
         BasicTextField(
             value = text,
-            onValueChange = { text = it.filter { c -> c.isDigit() } },
+            onValueChange = { raw ->
+                val digits = raw.filter { c -> c.isDigit() }.take(5)
+                text = digits
+                // 输入即生效：手动输入时和加减按钮一样，立刻更新数值，下方预览随之实时刷新；
+                // 清空待重输时不触发（保留当前值），超范围先夹回范围内生效。
+                digits.toIntOrNull()?.let { n ->
+                    val v = n.coerceIn(range.first, range.last)
+                    if (v != value) onChange(v)
+                }
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             textStyle = TextStyle(fontSize = 16.sp, textAlign = TextAlign.Center),
@@ -396,7 +400,8 @@ fun NumberStepperRow(
                 .background(FieldBackground)
                 .onFocusChanged { st ->
                     focused = st.isFocused
-                    if (!st.isFocused) commit()
+                    // 失焦只把显示规整回当前值（处理清空、超范围等残留显示）；值本身已随输入即时生效。
+                    if (!st.isFocused) text = value.toString()
                 }
                 .padding(vertical = 6.dp)
         )

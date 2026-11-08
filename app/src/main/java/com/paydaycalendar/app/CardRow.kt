@@ -36,7 +36,8 @@ fun urgencyColor(info: CycleInfo): Color = when {
 
 /// 一张卡的卡面行：细长条样式。
 /// 普通模式：名字、银行尾号、剩余天数、进度条、账单日/还款日。
-/// 极简模式：只留名字、剩余天数、进度条三样。
+/// 极简模式：紧凑单行版——名字、天数（含状态）、进度条三样都在，
+/// 字号与留白收紧，整体高度约为普通版的一半不到。
 /// 进度条是「剩余量」：越接近还款日越短，到期归零并变红；
 /// 到期（含逾期）时右侧出现「已还款」按钮，点后才进入下一周期。
 @Composable
@@ -56,19 +57,14 @@ fun CardRow(
             .background(CardPalette.brush(card.themeIndex))
             .clickable { onClick() }
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (minimal) {
-                    Text(
-                        card.name.ifEmpty { "未命名卡片" },
-                        color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.weight(1f))
-                } else {
+        if (minimal) {
+            MinimalCardContent(card = card, info = info, isDue = isDue, onPaid = onPaid)
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
                             card.name.ifEmpty { "未命名卡片" },
@@ -85,17 +81,15 @@ fun CardRow(
                             )
                         }
                     }
+                    DaysBlock(info)
+                    if (isDue) {
+                        Spacer(Modifier.width(10.dp))
+                        PaidButton(onPaid)
+                    }
                 }
-                DaysBlock(info)
-                if (isDue) {
-                    Spacer(Modifier.width(10.dp))
-                    PaidButton(onPaid)
-                }
-            }
 
-            ProgressBar(progress = info.progress, alert = isDue)
+                ProgressBar(progress = info.progress, alert = isDue)
 
-            if (!minimal) {
                 Row {
                     Text(
                         "账单日 ${info.statementDate.format(DateFmt.monthDay)}",
@@ -109,6 +103,73 @@ fun CardRow(
                 }
             }
         }
+    }
+}
+
+/// 极简模式内容：一行（名字＋天数）＋进度条，纵向只留最小呼吸感。
+@Composable
+private fun MinimalCardContent(
+    card: CreditCard,
+    info: CycleInfo,
+    isDue: Boolean,
+    onPaid: () -> Unit
+) {
+    Column(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                card.name.ifEmpty { "未命名卡片" },
+                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            DaysInline(info)
+            if (isDue) {
+                Spacer(Modifier.width(8.dp))
+                PaidButton(onPaid)
+            }
+        }
+        ProgressBar(progress = info.progress, alert = isDue)
+    }
+}
+
+/// 极简模式的天数：数字＋「天」＋状态小字横排一行；今天到期直接显示「今天还款」，
+/// 单次已结束显示「已结束」。
+@Composable
+private fun DaysInline(info: CycleInfo) {
+    if (info.isFinished) {
+        Text(
+            "已结束",
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+        )
+        return
+    }
+    if (info.daysRemaining == 0L) {
+        Text(
+            "今天还款",
+            color = Color.White,
+            fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+        )
+        return
+    }
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(
+            info.daysText,
+            color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold
+        )
+        Text(
+            "天",
+            color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 2.dp, start = 1.dp)
+        )
+        Text(
+            if (info.daysRemaining > 0) "后还款" else "已逾期",
+            color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+            modifier = Modifier.padding(bottom = 2.dp, start = 5.dp)
+        )
     }
 }
 
