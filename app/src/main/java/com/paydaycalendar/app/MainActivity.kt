@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -382,7 +383,7 @@ fun PressableToggleButton(text: String, onClick: () -> Unit) {
             .clip(shape)
             .background(background)
             .border(1.dp, borderColor, shape)
-            .clickable(interactionSource = interactionSource) { onClick() }
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onClick() }
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Text(text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
