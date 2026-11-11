@@ -22,17 +22,27 @@ class CardStore(context: Context) {
     // 赋值后在 commitMinimal() 落盘由调用方负责（见 MainActivity 切换处）。
     var minimalMode by mutableStateOf(prefs.getBoolean(KEY_MINIMAL, false))
 
+    // 手动模式开关：与极简模式是两个独立维度。同样不要写与属性同名的函数，
+    // 赋值后由调用方调 persistManualMode() 落盘。
+    var manualMode by mutableStateOf(prefs.getBoolean(KEY_MANUAL, false))
+
     init { load() }
 
     companion object {
         const val MAX_PROFILES = 5
         private const val KEY_STORE = "paydaycalendar.store.v2"
         private const val KEY_MINIMAL = "paydaycalendar.minimalMode"
+        private const val KEY_MANUAL = "paydaycalendar.manualMode"
     }
 
     /// 极简模式赋值后调用：把当前值写入 SharedPreferences 持久化
     fun persistMinimalMode() {
         prefs.edit().putBoolean(KEY_MINIMAL, minimalMode).apply()
+    }
+
+    /// 手动模式赋值后调用：把当前值写入 SharedPreferences 持久化
+    fun persistManualMode() {
+        prefs.edit().putBoolean(KEY_MANUAL, manualMode).apply()
     }
 
     // MARK: - 用户
@@ -111,6 +121,19 @@ class CardStore(context: Context) {
     fun markPaid(card: CreditCard) {
         val info = DateCalc.cycleInfo(card)
         update(card.copy(lastPaidDueDate = info.dueDate.toEpochDay()))
+    }
+
+    /// 手动模式点小框：切换这张卡「本期已还」的视觉标记。与 markPaid 是两套账：
+    /// 这里只改 manualPaidDueDate、不动 lastPaidDueDate、不推进周期。
+    /// 标记锚定当前周期还款日：若已标记的正是本期还款日则清除，否则设为本期还款日；
+    /// 周期一推进（点了大卡已还款、本期还款日变了），旧标记自动对不上而失效。
+    /// 已结束的单次卡不参与打勾。
+    fun toggleManualPaid(card: CreditCard) {
+        val info = DateCalc.cycleInfo(card)
+        if (info.isFinished) return
+        val dueEpoch = info.dueDate.toEpochDay()
+        val newValue = if (card.manualPaidDueDate == dueEpoch) null else dueEpoch
+        update(card.copy(manualPaidDueDate = newValue))
     }
 
     /// 每张卡的周期信息只算一次，再按紧迫度排序（已结束的单次卡沉底）。

@@ -8,10 +8,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,12 +57,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -143,20 +150,36 @@ fun PayDayApp(store: CardStore) {
                         item {
                             CardsHeader(
                                 title = "${store.activeProfile.name}的卡片",
-                                minimal = store.minimalMode
-                            ) { store.minimalMode = !store.minimalMode; store.persistMinimalMode() }
-                        }
-                        items(store.sortedCardsWithInfo(), key = { it.first.id }) { pair ->
-                            CardRow(
-                                card = pair.first,
-                                info = pair.second,
                                 minimal = store.minimalMode,
-                                onPaid = { store.markPaid(pair.first) },
-                                onClick = { formSession = FormSession(pair.first, isNew = false) }
+                                manual = store.manualMode,
+                                onToggleMinimal = {
+                                    store.minimalMode = !store.minimalMode; store.persistMinimalMode()
+                                },
+                                onToggleManual = {
+                                    store.manualMode = !store.manualMode; store.persistManualMode()
+                                }
                             )
                         }
-                        item {
-                            CalendarView(cards = store.cards)
+                        if (store.manualMode) {
+                            // 手动模式：小框阵列替换大卡列表；点小框只切换「本期已还」记号，
+                            // 不打开编辑表单。极简/普通排序切换在此模式下不影响布局，
+                            // 切回默认模式后才生效。
+                            item {
+                                ManualView(
+                                    pairs = store.sortedCardsWithInfo(),
+                                    onTogglePaid = { store.toggleManualPaid(it) }
+                                )
+                            }
+                        } else {
+                            items(store.sortedCardsWithInfo(), key = { it.first.id }) { pair ->
+                                CardRow(
+                                    card = pair.first,
+                                    info = pair.second,
+                                    minimal = store.minimalMode,
+                                    onPaid = { store.markPaid(pair.first) },
+                                    onClick = { formSession = FormSession(pair.first, isNew = false) }
+                                )
+                            }
                         }
                     }
                 }
@@ -306,21 +329,63 @@ private fun DonateDialog(onDismiss: () -> Unit) {
     }
 }
 
-/// 卡片区标题行：左侧当前用户，右侧普通/极简切换（选择会记住）
+/// 卡片区标题行：左侧当前用户，右侧并排两个带按下动效的切换按钮——
+/// 「默认模式/手动模式」与「极简排序/普通排序」，文案都显示当前模式名（选择会记住）。
+/// 两者是独立开关：手动模式下排序切换不改变小框布局，切回默认模式后生效。
 @Composable
-private fun CardsHeader(title: String, minimal: Boolean, onToggle: () -> Unit) {
+private fun CardsHeader(
+    title: String,
+    minimal: Boolean,
+    manual: Boolean,
+    onToggleMinimal: () -> Unit,
+    onToggleManual: () -> Unit
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .border(1.dp, Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .clickable { onToggle() }
-                .padding(horizontal = 10.dp, vertical = 5.dp)
-        ) {
-            Text(if (minimal) "极简" else "普通", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        }
+        Text(
+            title,
+            fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.size(8.dp))
+        PressableToggleButton(text = if (manual) "手动模式" else "默认模式") { onToggleManual() }
+        Spacer(Modifier.size(8.dp))
+        PressableToggleButton(text = if (minimal) "极简排序" else "普通排序") { onToggleMinimal() }
+    }
+}
+
+/// 带「开关按下」手感的切换按钮：按下时整体缩到约 0.94、背景加深、边框变深
+/// 呈内凹感，松开平滑回弹。两个模式按钮共用。
+@Composable
+fun PressableToggleButton(text: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = tween(durationMillis = 120),
+        label = "toggleScale"
+    )
+    val background by animateColorAsState(
+        targetValue = if (pressed) Color(0xFFE5E5EA) else Color.White,
+        animationSpec = tween(durationMillis = 120),
+        label = "toggleBackground"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (pressed) Color.Gray.copy(alpha = 0.9f) else Color.Gray.copy(alpha = 0.5f),
+        animationSpec = tween(durationMillis = 120),
+        label = "toggleBorder"
+    )
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(shape)
+            .background(background)
+            .border(1.dp, borderColor, shape)
+            .clickable(interactionSource = interactionSource) { onClick() }
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
 

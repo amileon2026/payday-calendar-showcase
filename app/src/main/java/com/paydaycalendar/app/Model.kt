@@ -17,6 +17,8 @@ enum class DueMode(val raw: String, val label: String) {
 
 /// 一张卡。日期字段用 epochDay（LocalDate.toEpochDay）存储，简单可靠。
 /// lastPaidDueDate：最近一次点「已还款」还清的那个还款日；没点过为 null。
+/// manualPaidDueDate：手动模式下被点小框标记「已还」的那一期还款日；与 lastPaidDueDate
+/// 是两套账——只做视觉记号，不推进周期；当前周期还款日变了它就自动对不上、标记失效。
 /// oneTimeDueDate：单次模式保存时定锚的唯一还款日。
 data class CreditCard(
     val id: String = UUID.randomUUID().toString(),
@@ -31,7 +33,8 @@ data class CreditCard(
     val createdAt: Long = System.currentTimeMillis(),
     val lastPaidDueDate: Long? = null,
     val oneTimeDays: Int = 30,
-    val oneTimeDueDate: Long? = null
+    val oneTimeDueDate: Long? = null,
+    val manualPaidDueDate: Long? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -47,6 +50,7 @@ data class CreditCard(
         put("lastPaidDueDate", lastPaidDueDate ?: JSONObject.NULL)
         put("oneTimeDays", oneTimeDays)
         put("oneTimeDueDate", oneTimeDueDate ?: JSONObject.NULL)
+        put("manualPaidDueDate", manualPaidDueDate ?: JSONObject.NULL)
     }
 
     companion object {
@@ -64,7 +68,8 @@ data class CreditCard(
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
             lastPaidDueDate = if (o.isNull("lastPaidDueDate")) null else o.optLong("lastPaidDueDate"),
             oneTimeDays = o.optInt("oneTimeDays", 30),
-            oneTimeDueDate = if (o.isNull("oneTimeDueDate")) null else o.optLong("oneTimeDueDate")
+            oneTimeDueDate = if (o.isNull("oneTimeDueDate")) null else o.optLong("oneTimeDueDate"),
+            manualPaidDueDate = if (o.isNull("manualPaidDueDate")) null else o.optLong("manualPaidDueDate")
         )
     }
 }
